@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pony Run: Pure Speed (13s Cap)</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Varela+Round&display=swap');
+
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f8ff;
+            font-family: 'Varela Round', sans-serif;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 800px;
+            height: 400px;
+            background: linear-gradient(to bottom, #87CEEB 0%, #E0F7FA 80%, #90EE90 80%, #228B22 100%);
+            border: 4px solid #333;
+            border-radius: 12px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+            overflow: hidden;
+            cursor: pointer;
+        }
+
+        canvas { display: block; width: 100%; height: 100%; }
+
+        /* UI Overlay Styles */
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            visibility: hidden;
+        }
+
+        .modal {
+            background: white;
+            padding: 2rem;
+            border-radius: 20px;
+            border: 4px solid #FF69B4;
+            text-align: center;
+            box-shadow: 0 0 0 10px rgba(255, 105, 180, 0.3);
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            max-width: 80%;
+        }
+
+        @keyframes popIn {
+            from { transform: scale(0.8); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        h1 {
+            color: #FF1493;
+            margin-bottom: 1rem;
+            font-family: 'Press Start 2P', cursive;
+            font-size: 1.5rem;
+            line-height: 1.5;
+        }
+
+        p { font-size: 1.2rem; color: #555; margin-bottom: 1.5rem; }
+
+        button {
+            background: #FF69B4;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 1.1rem;
+            font-family: 'Press Start 2P', cursive;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px #C71585;
+            transition: transform 0.1s;
+        }
+        button:active { transform: translateY(4px); box-shadow: 0 0 #C71585; }
+
+        #ui-start { visibility: visible; background: rgba(255, 255, 255, 0.9); }
+
+        #timer-hud {
+            position: absolute;
+            top: 20px; right: 20px;
+            font-family: 'Press Start 2P', cursive;
+            color: #333; font-size: 14px;
+            background: rgba(255,255,255,0.8);
+            padding: 8px; border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas" width="800" height="400"></canvas>
+        <div id="timer-hud">00.00s</div>
+
+        <div id="ui-start" class="overlay">
+            <div class="modal">
+                <h1>🐴 Pony Dash!</h1>
+                <p>Click to Jump. Avoid obstacles.</p>
+                <button id="btn-start">START GAME</button>
+            </div>
+        </div>
+
+        <div id="ui-gameover" class="overlay">
+            <div class="modal">
+                <h1 style="color: #e74c3c;">GAME OVER</h1>
+                <p id="death-message">You crashed!</p>
+                <button id="btn-restart">TRY AGAIN</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- ASSETS ---
+        const ponySprite = new Image();
+        ponySprite.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23FF69B4' d='M8 12h4v4h4v-4h4v4h4v8h-4v4h-4v-4h-4v4h-4v-4h-4z'/%3E%3Cpath fill='%23FF1493' d='M20 12h4v4h-4zM8 16h4v4h-4z'/%3E%3Cpath fill='%23000' d='M22 14h2v2h-2z'/%3E%3Cpath fill='%23800080' d='M24 10h4v6h-4zM4 18h4v4h-4z'/%3E%3C/svg%3E";
+
+        const obstacleSprite = new Image();
+        obstacleSprite.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23228B22' d='M12 28h8v-16h-4v4h-4z'/%3E%3Cpath fill='%23006400' d='M8 20h4v4h-4zM20 16h4v4h-4z'/%3E%3C/svg%3E";
+
+        // --- AUDIO ---
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        let audioCtx, isMuted = false;
+
+        function initAudio() {
+            if (!audioCtx) audioCtx = new AudioContext();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playJumpSound() {
+            if (!audioCtx || isMuted) return;
+            const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.1);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+        }
+
+        function playGameOverSound() {
+            if (!audioCtx || isMuted) return;
+            const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(200, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.3);
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.3);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+        }
+
+        let nextNoteTime = 0, bgmTimer, noteIndex = 0;
+        const melody = [330, 330, 392, 440, 330, 294, 262, 294];
+
+        function startBGM() {
+            if (!audioCtx) return;
+            stopBGM();
+            nextNoteTime = audioCtx.currentTime;
+            scheduleNote();
+        }
+        function scheduleNote() {
+            if (isMuted) return;
+            const bps = 0.2;
+            const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.value = melody[noteIndex % melody.length];
+            gain.gain.setValueAtTime(0.05, nextNoteTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, nextNoteTime + 0.15);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(nextNoteTime); osc.stop(nextNoteTime + 0.2);
+            noteIndex++;
+            nextNoteTime += bps;
+            bgmTimer = setTimeout(scheduleNote, (bps * 1000) - 50);
+        }
+        function stopBGM() { clearTimeout(bgmTimer); }
+
+        // --- GAME ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const timerHud = document.getElementById('timer-hud');
+
+        let gameState = 'START';
+        let lastTime = 0, elapsedTime = 0, spawnTimer = 0;
+
+        const GRAVITY = 1800;
+        const JUMP_FORCE = -750;
+        const GROUND_Y = 320;
+        const BASE_SPEED = 300;
+        const MAX_SPEED = 1200;
+        // ★ Speed cap set to 13s
+        const SPEED_CAP_MS = 13000;
+
+        let pony = { x: 50, y: GROUND_Y, width: 60, height: 60, dy: 0, grounded: true };
+        let obstacles = [];
+
+        const uiStart = document.getElementById('ui-start');
+        const uiGameOver = document.getElementById('ui-gameover');
+
+        function resetGame() {
+            pony.y = GROUND_Y - pony.height;
+            pony.dy = 0;
+            pony.grounded = true;
+            obstacles = [];
+            elapsedTime = 0;
+            spawnTimer = 0;
+            gameState = 'PLAYING';
+            lastTime = performance.now();
+
+            uiStart.style.visibility = 'hidden';
+            uiGameOver.style.visibility = 'hidden';
+
+            initAudio();
+            startBGM();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function gameLoop(timestamp) {
+            if (gameState !== 'PLAYING') return;
+
+            const dt = (timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+            if (dt > 0.1) { requestAnimationFrame(gameLoop); return; }
+
+            elapsedTime += dt * 1000;
+            timerHud.textContent = (elapsedTime / 1000).toFixed(2) + 's';
+
+            // ★ Pure Speed: ramps linearly until 13s, then stays constant
+            const cappedTime = Math.min(elapsedTime, SPEED_CAP_MS);
+            const progress = cappedTime / 20000; // max 0.65 (13/20)
+            const currentSpeed = BASE_SPEED + (MAX_SPEED - BASE_SPEED) * progress;
+
+            // Pony physics
+            pony.dy += GRAVITY * dt;
+            pony.y += pony.dy * dt;
+            if (pony.y > GROUND_Y - pony.height) {
+                pony.y = GROUND_Y - pony.height;
+                pony.dy = 0;
+                pony.grounded = true;
+            }
+
+            // Spawn obstacles
+            spawnTimer -= dt;
+            if (spawnTimer <= 0) {
+                obstacles.push({
+                    x: canvas.width,
+                    y: GROUND_Y - 50,
+                    width: 40,
+                    height: 50
+                });
+                const minSpawn = 1.5 - (progress * 1.0);
+                spawnTimer = minSpawn + Math.random() * 0.5;
+            }
+
+            // Move & collide
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                let obs = obstacles[i];
+                obs.x -= currentSpeed * dt;
+                if (
+                    pony.x + 10 < obs.x + obs.width &&
+                    pony.x + pony.width - 10 > obs.x &&
+                    pony.y + 10 < obs.y + obs.height &&
+                    pony.y + pony.height > obs.y
+                ) {
+                    doGameOver();
+                    return;
+                }
+                if (obs.x + obs.width < 0) obstacles.splice(i, 1);
+            }
+
+            // --- DRAW ---
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#228B22';
+            ctx.fillRect(0, GROUND_Y, canvas.width, canvas.height - GROUND_Y);
+            ctx.drawImage(ponySprite, pony.x, pony.y, pony.width, pony.height);
+            obstacles.forEach(obs => {
+                ctx.drawImage(obstacleSprite, obs.x, obs.y, obs.width, obs.height);
+            });
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function jump() {
+            if (gameState === 'PLAYING' && pony.grounded) {
+                pony.dy = JUMP_FORCE;
+                pony.grounded = false;
+                playJumpSound();
+            }
+        }
+
+        function doGameOver() {
+            gameState = 'GAMEOVER';
+            stopBGM();
+            playGameOverSound();
+            uiGameOver.style.visibility = 'visible';
+        }
+
+        // --- INPUT ---
+        document.getElementById('btn-start').addEventListener('click', resetGame);
+        document.getElementById('btn-restart').addEventListener('click', resetGame);
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); jump(); }
+        });
+        document.getElementById('game-container').addEventListener('mousedown', (e) => {
+            if (e.target.tagName !== 'BUTTON') jump();
+        });
+    </script>
+</body>
+</html>
