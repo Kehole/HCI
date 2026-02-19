@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Textual Cognitive Flow Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        h1, p { margin-bottom: 20px; text-align: center; }
+
+        #task-tracker {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #333;
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: 1px solid #555;
+            font-size: 0.9rem;
+        }
+
+        button {
+            margin-top: 15px;
+            padding: 10px;
+            background: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+        button:hover { background: #1976D2; }
+
+        /* ===== INSTRUCTIONS ===== */
+        #instructions-screen {
+            max-width: 560px;
+            background: #252525;
+            padding: 36px 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        #instructions-screen h1 { margin-bottom: 24px; }
+
+        .legend-section { margin-bottom: 22px; }
+
+        .legend-section h3 {
+            font-size: 0.95rem;
+            margin: 0 0 12px 0;
+            color: #bbb;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .legend-row {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+
+        .legend-word {
+            display: inline-block;
+            min-width: 80px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .legend-text { line-height: 1.4; }
+        .legend-text strong { color: #fff; }
+
+        /* ===== TEXT TABLE GRID ===== */
+        #text-grid-container {
+            background: #252525;
+            padding: 24px 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        .text-table {
+            border-collapse: collapse;
+            font-size: 0.9rem;
+            width: 100%;
+        }
+
+        .text-table th {
+            padding: 10px 20px;
+            text-align: left;
+            color: #999;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid #444;
+        }
+
+        .text-table td {
+            padding: 12px 20px;
+            border-bottom: 1px solid #333;
+            color: #ddd;
+        }
+
+        .text-table tr.server-row {
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .text-table tr.server-row:hover {
+            background: #333;
+        }
+
+        .text-table tr.server-row.selected {
+            background: #2a3a4a;
+            outline: 2px solid #2196F3;
+            outline-offset: -2px;
+        }
+
+        .server-label { font-weight: 600; color: #f0f0f0; }
+
+        /* ===== FEEDBACK ===== */
+        #feedback {
+            min-height: 28px;
+            margin-top: 12px;
+            font-size: 0.95rem;
+            text-align: center;
+        }
+        #feedback.wrong { color: #FF5252; }
+        #feedback.correct { color: #4CAF50; }
+
+        /* ===== COUNTDOWN TIMER BAR ===== */
+        #timer-bar-wrapper {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 6px;
+            background: #333;
+            z-index: 200;
+            display: none;
+        }
+
+        #timer-bar {
+            height: 100%;
+            width: 100%;
+            background: #2196F3;
+            border-radius: 0 3px 3px 0;
+        }
+
+        #timer-bar.warning { background: #FFC107; }
+        #timer-bar.danger  { background: #FF5252; }
+
+        #timer-label {
+            position: fixed;
+            top: 10px;
+            left: 20px;
+            font-size: 0.85rem;
+            color: #999;
+            z-index: 201;
+            display: none;
+        }
+
+        /* ===== COMPLETE / REPORT ===== */
+        #complete-screen {
+            display: none;
+            text-align: center;
+            max-width: 580px;
+            background: #252525;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        .report-summary {
+            display: flex;
+            justify-content: space-around;
+            margin: 24px 0;
+            padding: 16px;
+            background: #333;
+            border-radius: 8px;
+        }
+
+        .report-stat { text-align: center; }
+
+        .report-stat-value {
+            font-size: 1.6rem;
+            font-weight: 700;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .report-stat-label {
+            font-size: 0.75rem;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .report-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 0.85rem;
+        }
+
+        .report-table th,
+        .report-table td {
+            padding: 10px 14px;
+            text-align: left;
+            border-bottom: 1px solid #444;
+        }
+
+        .report-table th {
+            color: #999;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.5px;
+        }
+
+        .report-table td { color: #ddd; }
+        .report-status-pass    { color: #4CAF50; font-weight: 600; }
+        .report-status-fail    { color: #FF5252; font-weight: 600; }
+        .report-status-timeout { color: #FFC107; font-weight: 600; }
+    </style>
+</head>
+<body>
+
+    <!-- COUNTDOWN TIMER BAR -->
+    <div id="timer-bar-wrapper"><div id="timer-bar"></div></div>
+    <div id="timer-label">15s</div>
+
+    <!-- TASK TRACKER -->
+    <div id="task-tracker" style="display:none;">Task: <span id="step-count">1</span> / 9</div>
+
+    <!-- ===== SCREEN 1: INSTRUCTIONS ===== -->
+    <div id="instructions-screen">
+        <h1>Server Health Monitor (Text)</h1>
+        <p>Before you begin, please review the rules below.</p>
+
+        <div class="legend-section">
+            <h3>Memory Load — Server Status</h3>
+            <div class="legend-row">
+                <span class="legend-word">Healthy</span>
+                <span class="legend-text">— The server is running normally</span>
+            </div>
+            <div class="legend-row">
+                <span class="legend-word">Busy</span>
+                <span class="legend-text">— The server is under heavy memory load</span>
+            </div>
+            <div class="legend-row">
+                <span class="legend-word">Crashed</span>
+                <span class="legend-text">— The server is offline</span>
+            </div>
+        </div>
+
+        <div class="legend-section">
+            <h3>System Speed — Latency</h3>
+            <div class="legend-row">
+                <span class="legend-word">Normal</span>
+                <span class="legend-text">— The system is responding at normal speed</span>
+            </div>
+            <div class="legend-row">
+                <span class="legend-word">Latency</span>
+                <span class="legend-text">— The system is experiencing delayed responses</span>
+            </div>
+        </div>
+
+        <p style="font-size:0.85rem; color:#999; margin-top:8px;">
+            You will complete <strong style="color:#f0f0f0;">9 tasks</strong>. Each task asks you to find and click a specific server row in the table, then press <em>Confirm</em>. You have <strong style="color:#f0f0f0;">15 seconds</strong> per task. If your selection is wrong you will try again. If time runs out the task is skipped and marked as failed.
+        </p>
+
+        <button onclick="startTest()" style="width:100%; margin-top:20px;">I Understand — Start Test</button>
+    </div>
+
+    <!-- ===== SCREEN 2: TASK / DASHBOARD ===== -->
+    <div id="dashboard-screen" style="display:none;">
+        <h1>Server Health Monitor</h1>
+        <p id="task-prompt"></p>
+        <div id="text-grid-container">
+            <table class="text-table">
+                <thead>
+                    <tr>
+                        <th>Server</th>
+                        <th>Memory Load</th>
+                        <th>System Speed</th>
+                    </tr>
+                </thead>
+                <tbody id="server-tbody"></tbody>
+            </table>
+        </div>
+        <div id="feedback"></div>
+        <button id="confirm-btn" onclick="confirmSelection()" style="margin-top:18px; width:260px; display:block; margin-left:auto; margin-right:auto;" disabled>Confirm Selection</button>
+    </div>
+
+    <!-- ===== SCREEN 3: REPORT ===== -->
+    <div id="complete-screen">
+        <h1>Test Report</h1>
+        <p>Here are your results for this session.</p>
+
+        <div class="report-summary">
+            <div class="report-stat">
+                <span class="report-stat-value" id="report-correct" style="color:#4CAF50;">0</span>
+                <span class="report-stat-label">Passed</span>
+            </div>
+            <div class="report-stat">
+                <span class="report-stat-value" id="report-wrong" style="color:#FF5252;">0</span>
+                <span class="report-stat-label">Wrong Attempts</span>
+            </div>
+            <div class="report-stat">
+                <span class="report-stat-value" id="report-timeout" style="color:#FFC107;">0</span>
+                <span class="report-stat-label">Timed Out</span>
+            </div>
+            <div class="report-stat">
+                <span class="report-stat-value" id="report-total-time" style="color:#2196F3;">0s</span>
+                <span class="report-stat-label">Total Time</span>
+            </div>
+        </div>
+
+        <table class="report-table">
+            <thead>
+                <tr>
+                    <th>Task</th>
+                    <th>Description</th>
+                    <th>Time</th>
+                    <th>Attempts</th>
+                    <th>Result</th>
+                </tr>
+            </thead>
+            <tbody id="report-body"></tbody>
+        </table>
+
+        <button onclick="location.reload()" style="width:100%;">Restart Test</button>
+    </div>
+
+    <script>
+        // ===== TASK DEFINITIONS (9 tasks — trick task is always #7) =====
+        // Same structure as the visual version
+        const TASKS = [
+            {
+                prompt: "Task: Glance at the table. Find and click the <strong>Crashed</strong> server.",
+                target: "critical",
+                distractors: ["busy"]
+            },
+            {
+                prompt: "Task: Glance at the table. Find and click the <strong>Busy</strong> server that suffers <strong>Latency</strong>.",
+                target: "busy-latency",
+                distractors: ["busy", "healthy-latency"]
+            },
+            {
+                prompt: "Task: Glance at the table. Find and click the <strong>Crashed</strong> server that suffers <strong>Latency</strong>.",
+                target: "critical-latency",
+                distractors: ["critical", "busy-latency"]
+            },
+            {
+                prompt: "Task: Glance at the table. Find and click the <strong>Busy</strong> server.",
+                target: "busy",
+                distractors: ["healthy-latency"]
+            },
+            {
+                prompt: "Task: Glance at the table. Find and click the <strong>Healthy</strong> server that suffers <strong>Latency</strong>.",
+                target: "healthy-latency",
+                distractors: ["busy", "critical"]
+            },
+            {
+                prompt: "Task: Glance at the table. Find and click the <strong>Crashed</strong> server.",
+                target: "critical",
+                distractors: ["busy-latency", "healthy-latency"]
+            },
+            // --- TASK 7: TRICK — all servers are Healthy/Normal, any click accepted ---
+            {
+                prompt: "Task: Glance at the table. Find and click the server that runs <strong>Normal</strong>.",
+                target: "any",
+                distractors: []
+            },
+            {
+                prompt: "Task: Glance at the table. Find and click the <strong>Busy</strong> server that suffers <strong>Latency</strong>.",
+                target: "busy-latency",
+                distractors: ["critical", "busy"]
+            },
+            {
+                prompt: "Task: Glance at the table. Find and click the <strong>Crashed</strong> server that suffers <strong>Latency</strong>.",
+                target: "critical-latency",
+                distractors: ["busy-latency", "healthy-latency", "busy"]
+            }
+        ];
+
+        const TASK_LABELS = [
+            "Find Crashed server",
+            "Find Busy + Latency server",
+            "Find Crashed + Latency server",
+            "Find Busy server",
+            "Find Healthy + Latency server",
+            "Find Crashed server (v2)",
+            "Find Normal server (trick)",
+            "Find Busy + Latency server (v2)",
+            "Find Crashed + Latency server (v2)"
+        ];
+
+        // Map type → text labels { memory, speed }
+        function typeToLabels(type) {
+            switch (type) {
+                case 'healthy':          return { memory: 'Healthy', speed: 'Normal' };
+                case 'busy':             return { memory: 'Busy',    speed: 'Normal' };
+                case 'critical':         return { memory: 'Crashed', speed: 'Normal' };
+                case 'healthy-latency':  return { memory: 'Healthy', speed: 'Latency' };
+                case 'busy-latency':     return { memory: 'Busy',    speed: 'Latency' };
+                case 'critical-latency': return { memory: 'Crashed', speed: 'Latency' };
+                default:                 return { memory: 'Healthy', speed: 'Normal' };
+            }
+        }
+
+        // ===== STATE =====
+        let currentTask = 0;
+        let selectedIndex = -1;
+        let targetIndex = -1;
+        let taskLocked = false;
+
+        const SERVER_COUNT = 5;
+        const TIMER_DURATION = 15;
+        let timerInterval = null;
+        let timerStart = 0;
+
+        let results = [];
+        let currentAttempts = 0;
+
+        // DOM refs
+        const instructionsScreen = document.getElementById('instructions-screen');
+        const dashboardScreen    = document.getElementById('dashboard-screen');
+        const completeScreen     = document.getElementById('complete-screen');
+        const taskTracker        = document.getElementById('task-tracker');
+        const stepDisplay        = document.getElementById('step-count');
+        const serverTbody        = document.getElementById('server-tbody');
+        const taskPrompt         = document.getElementById('task-prompt');
+        const feedback           = document.getElementById('feedback');
+        const confirmBtn         = document.getElementById('confirm-btn');
+        const timerBarWrapper    = document.getElementById('timer-bar-wrapper');
+        const timerBar           = document.getElementById('timer-bar');
+        const timerLabel         = document.getElementById('timer-label');
+
+        // ===== HELPERS =====
+
+        function randomIndex(exclude, max) {
+            let idx;
+            do { idx = Math.floor(Math.random() * max); }
+            while (exclude.includes(idx));
+            return idx;
+        }
+
+        // ===== TIMER =====
+
+        function startTimer() {
+            timerStart = Date.now();
+            timerBar.style.width = '100%';
+            timerBar.className = '';
+            timerBarWrapper.style.display = 'block';
+            timerLabel.style.display = 'block';
+
+            timerInterval = setInterval(() => {
+                const elapsed = (Date.now() - timerStart) / 1000;
+                const remaining = Math.max(0, TIMER_DURATION - elapsed);
+                const pct = (remaining / TIMER_DURATION) * 100;
+
+                timerBar.style.width = pct + '%';
+                timerLabel.textContent = Math.ceil(remaining) + 's';
+
+                if (remaining <= 5) {
+                    timerBar.className = 'danger';
+                } else if (remaining <= 10) {
+                    timerBar.className = 'warning';
+                } else {
+                    timerBar.className = '';
+                }
+
+                if (remaining <= 0) {
+                    clearInterval(timerInterval);
+                    timerInterval = null;
+                    handleTimeout();
+                }
+            }, 250);
+        }
+
+        function stopTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+        }
+
+        function hideTimer() {
+            timerBarWrapper.style.display = 'none';
+            timerLabel.style.display = 'none';
+        }
+
+        function getElapsedTime() {
+            return ((Date.now() - timerStart) / 1000).toFixed(1);
+        }
+
+        function handleTimeout() {
+            taskLocked = true;
+            feedback.textContent = "\u23F1 Time\u2019s up! Skipping to next task\u2026";
+            feedback.className = 'wrong';
+            confirmBtn.disabled = true;
+
+            results.push({
+                time: null,
+                attempts: currentAttempts,
+                status: 'timeout'
+            });
+
+            setTimeout(() => { advanceTask(); }, 1200);
+        }
+
+        // ===== CORE =====
+
+        function startTest() {
+            instructionsScreen.style.display = 'none';
+            dashboardScreen.style.display = 'block';
+            taskTracker.style.display = 'block';
+            results = [];
+            currentTask = 0;
+            loadTask();
+        }
+
+        function loadTask() {
+            const task = TASKS[currentTask];
+            stepDisplay.innerText = currentTask + 1;
+            taskPrompt.innerHTML = task.prompt;
+            feedback.textContent = '';
+            feedback.className = '';
+            confirmBtn.disabled = true;
+            selectedIndex = -1;
+            currentAttempts = 0;
+            taskLocked = false;
+            buildTable(task);
+            startTimer();
+        }
+
+        function buildTable(task) {
+            serverTbody.innerHTML = '';
+            const isTrick = task.target === 'any';
+            const usedIndices = [];
+
+            // Assign types to each of the 5 server rows
+            const serverTypes = new Array(SERVER_COUNT).fill('healthy');
+
+            if (!isTrick) {
+                // Place target at a random row
+                targetIndex = randomIndex(usedIndices, SERVER_COUNT);
+                usedIndices.push(targetIndex);
+                serverTypes[targetIndex] = task.target;
+
+                // Place distractors
+                for (const d of task.distractors) {
+                    const di = randomIndex(usedIndices, SERVER_COUNT);
+                    usedIndices.push(di);
+                    serverTypes[di] = d;
+                }
+            } else {
+                // Trick: all healthy, any row is correct
+                targetIndex = -1;
+            }
+
+            // Render rows
+            for (let i = 0; i < SERVER_COUNT; i++) {
+                const tr = document.createElement('tr');
+                tr.className = 'server-row';
+
+                const labels = typeToLabels(serverTypes[i]);
+
+                const tdName = document.createElement('td');
+                tdName.className = 'server-label';
+                tdName.textContent = 'Server ' + (i + 1);
+                tr.appendChild(tdName);
+
+                const tdMemory = document.createElement('td');
+                tdMemory.textContent = labels.memory;
+                tr.appendChild(tdMemory);
+
+                const tdSpeed = document.createElement('td');
+                tdSpeed.textContent = labels.speed;
+                tr.appendChild(tdSpeed);
+
+                const idx = i;
+                tr.addEventListener('click', () => selectRow(idx));
+                serverTbody.appendChild(tr);
+            }
+        }
+
+        function selectRow(idx) {
+            if (taskLocked) return;
+            const rows = serverTbody.querySelectorAll('.server-row');
+            rows.forEach(r => r.classList.remove('selected'));
+            rows[idx].classList.add('selected');
+            selectedIndex = idx;
+            confirmBtn.disabled = false;
+            feedback.textContent = '';
+            feedback.className = '';
+        }
+
+        function confirmSelection() {
+            if (selectedIndex === -1 || taskLocked) return;
+
+            const task = TASKS[currentTask];
+            const isTrick = task.target === 'any';
+            const isCorrect = isTrick || selectedIndex === targetIndex;
+
+            currentAttempts++;
+
+            if (isCorrect) {
+                taskLocked = true;
+                stopTimer();
+                const elapsed = getElapsedTime();
+
+                feedback.textContent = '\u2713 Correct!';
+                feedback.className = 'correct';
+                confirmBtn.disabled = true;
+
+                results.push({
+                    time: parseFloat(elapsed),
+                    attempts: currentAttempts,
+                    status: 'pass'
+                });
+
+                setTimeout(() => { advanceTask(); }, 800);
+            } else {
+                feedback.textContent = '\u2717 Wrong server. Please try again.';
+                feedback.className = 'wrong';
+
+                const rows = serverTbody.querySelectorAll('.server-row');
+                rows[selectedIndex].classList.remove('selected');
+                selectedIndex = -1;
+                confirmBtn.disabled = true;
+            }
+        }
+
+        function advanceTask() {
+            currentTask++;
+            if (currentTask >= TASKS.length) {
+                stopTimer();
+                hideTimer();
+                dashboardScreen.style.display = 'none';
+                taskTracker.style.display = 'none';
+                buildReport();
+                completeScreen.style.display = 'block';
+            } else {
+                loadTask();
+            }
+        }
+
+        // ===== REPORT =====
+
+        function buildReport() {
+            const tbody = document.getElementById('report-body');
+            tbody.innerHTML = '';
+
+            let totalPass = 0, totalTimeout = 0, totalWrongAttempts = 0;
+
+            results.forEach((r, i) => {
+                const tr = document.createElement('tr');
+
+                const tdNum = document.createElement('td');
+                tdNum.textContent = i + 1;
+                tr.appendChild(tdNum);
+
+                const tdDesc = document.createElement('td');
+                tdDesc.textContent = TASK_LABELS[i] || '';
+                tr.appendChild(tdDesc);
+
+                const tdTime = document.createElement('td');
+                if (r.status === 'timeout') {
+                    tdTime.textContent = '> 15s';
+                    tdTime.style.color = '#FFC107';
+                } else {
+                    tdTime.textContent = r.time + 's';
+                }
+                tr.appendChild(tdTime);
+
+                const tdAttempts = document.createElement('td');
+                tdAttempts.textContent = r.attempts;
+                tr.appendChild(tdAttempts);
+
+                const tdStatus = document.createElement('td');
+                if (r.status === 'pass') {
+                    tdStatus.textContent = 'Passed';
+                    tdStatus.className = 'report-status-pass';
+                    totalPass++;
+                } else if (r.status === 'timeout') {
+                    tdStatus.textContent = 'Failed (Timed Out)';
+                    tdStatus.className = 'report-status-timeout';
+                    totalTimeout++;
+                }
+
+                totalWrongAttempts += Math.max(0, r.attempts - (r.status === 'pass' ? 1 : 0));
+
+                tr.appendChild(tdStatus);
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('report-correct').textContent = totalPass;
+            document.getElementById('report-wrong').textContent = totalWrongAttempts;
+            document.getElementById('report-timeout').textContent = totalTimeout;
+
+            let totalTime = 0;
+            results.forEach(r => {
+                totalTime += r.status === 'timeout' ? TIMER_DURATION : r.time;
+            });
+            document.getElementById('report-total-time').textContent = totalTime.toFixed(1) + 's';
+        }
+    </script>
+</body>
+</html>
