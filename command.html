@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OVERWATCH // Tactical Path Extraction v5</title>
+    <style>
+        /* --- CORE AESTHETIC --- */
+        :root {
+            --bg-color: #05070a;
+            --panel-bg: #0d1117;
+            --border-color: #1f2937;
+            --text-muted: #6b7280;
+            --text-bright: #e5e7eb;
+            --color-blue: #00d2ff;
+            --color-yellow: #ffc107;
+            --color-red: #f44336;
+            --threat-color: #ef4444; 
+            --grid-rows: 6;
+            --grid-cols: 6;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: "Courier New", Courier, monospace;
+            background-color: var(--bg-color);
+            color: var(--text-muted);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        h1, h2, h3 { color: var(--text-bright); font-weight: normal; margin: 0 0 15px 0; }
+        p { margin: 0 0 15px 0; line-height: 1.4; font-size: 0.9rem; }
+        hr { border: 0; border-top: 1px solid var(--border-color); margin: 20px 0; }
+        
+        .screen {
+            display: none;
+            flex-direction: column;
+            width: 100%;
+            max-width: 850px;
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            padding: 30px;
+            box-shadow: 0 0 40px rgba(0, 0, 0, 0.9);
+            position: relative;
+        }
+
+        .screen.active { display: flex; }
+
+        button {
+            background: rgba(0,0,0,0.5);
+            color: var(--text-bright);
+            border: 1px solid var(--text-muted);
+            padding: 12px 24px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            flex-grow: 1;
+            letter-spacing: 2px;
+        }
+
+        button:hover { background: var(--text-muted); color: var(--bg-color); border-color: var(--text-bright); }
+        .btn-group { display: flex; gap: 15px; margin-top: 20px; }
+
+        /* --- TACTICAL GRID --- */
+        .hud-header {
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            font-size: 0.8rem;
+            color: var(--text-bright);
+        }
+
+        #grid-wrapper {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            aspect-ratio: 1 / 1;
+            position: relative;
+            background: #000;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+        }
+
+        .scan-line {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 4px;
+            background: rgba(0, 210, 255, 0.4);
+            box-shadow: 0 0 15px rgba(0, 210, 255, 0.6);
+            animation: scan 3s linear infinite;
+            pointer-events: none;
+            z-index: 50;
+        }
+
+        @keyframes scan {
+            0% { top: -10%; opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { top: 110%; opacity: 0; }
+        }
+
+        #grid-container {
+            display: grid;
+            grid-template-columns: repeat(var(--grid-cols), 1fr);
+            grid-template-rows: repeat(var(--grid-rows), 1fr);
+            gap: 2px;
+            height: 100%;
+            position: relative;
+            z-index: 10;
+        }
+
+        .cell {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.65rem;
+            cursor: crosshair;
+            user-select: none;
+            transition: all 0.1s;
+            color: var(--text-muted);
+            position: relative;
+        }
+
+        /* =========================================
+           MODE A: RAW DATA (CONTROL) - TEXT BASED
+           ========================================= */
+        .mode-a .cell {
+            background: #111820;
+            border: 1px solid #1f2937;
+        }
+        .mode-a .cell:hover { border-color: var(--text-bright); }
+        
+        .mode-a .cell-threat::after { content: "[MINE]"; }
+        
+        /* Prioritized Text Labels (Kept monochromatic to force reading) */
+        .mode-a .color-blue::after { content: "[SAFE]"; }
+        .mode-a .color-yellow::after { content: "[RISKY]"; }
+        .mode-a .color-red::after { content: "[DANGEROUS]"; }
+        
+        .mode-a .cell.secured {
+            background: var(--text-bright);
+            color: var(--bg-color);
+            border-color: var(--text-bright);
+        }
+        .mode-a .cell.secured::after { content: "[LINK]"; }
+
+        /* =========================================
+           MODE B: GLANCEABLE (CONVEXITY + COLOR)
+           ========================================= */
+        .mode-b .cell { color: transparent !important; border: none; }
+        
+        /* Threat: Convex / Bump */
+        .mode-b .cell-threat {
+            background: linear-gradient(135deg, #2a2d33 0%, #14161a 100%);
+            box-shadow: 
+                inset 1px 1px 2px rgba(255, 255, 255, 0.15), 
+                inset -3px -3px 6px rgba(0, 0, 0, 0.9),     
+                2px 2px 4px rgba(0,0,0,0.6);                
+            z-index: 2; 
+        }
+
+        /* Safe: Concave / Trench */
+        .mode-b .cell-safe, .mode-b .cell-branch { background: #0a0e14; z-index: 1; }
+
+        /* Priority Colors for Trench Lips */
+        .mode-b .color-blue {
+            box-shadow: inset 4px 4px 10px rgba(0,0,0,0.9), inset -1px -1px 4px rgba(0, 210, 255, 0.5);
+            border-bottom: 2px solid rgba(0, 210, 255, 0.3);
+        }
+        .mode-b .color-yellow {
+            box-shadow: inset 4px 4px 10px rgba(0,0,0,0.9), inset -1px -1px 4px rgba(255, 193, 7, 0.5);
+            border-bottom: 2px solid rgba(255, 193, 7, 0.3);
+        }
+        .mode-b .color-red {
+            box-shadow: inset 4px 4px 10px rgba(0,0,0,0.9), inset -1px -1px 4px rgba(244, 67, 54, 0.5);
+            border-bottom: 2px solid rgba(244, 67, 54, 0.3);
+        }
+
+        .mode-b .cell:hover::before {
+            content: ''; position: absolute; top:0; left:0; right:0; bottom:0;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+
+        .mode-b .cell.secured {
+            background: rgba(0, 210, 255, 0.2);
+            box-shadow: inset 0 0 15px var(--color-blue);
+            border-bottom: none;
+            z-index: 5;
+        }
+
+        /* --- FEEDBACK STATES --- */
+        .cell.flash-error {
+            background: var(--threat-color) !important;
+            box-shadow: 0 0 20px var(--threat-color) !important;
+            color: white !important;
+            z-index: 10;
+        }
+
+        #system-message {
+            margin-top: 15px;
+            text-align: center;
+            font-weight: bold;
+            min-height: 1.2em;
+            letter-spacing: 2px;
+        }
+        .msg-error { color: var(--threat-color); }
+        .msg-success { color: var(--color-blue); }
+        .msg-warn { color: var(--color-yellow); }
+
+        /* Report Table */
+        #report-list {
+            list-style-type: none; padding: 0; margin: 15px 0;
+            background: rgba(0,0,0,0.3); border: 1px solid var(--border-color);
+            max-height: 150px; overflow-y: auto;
+        }
+        #report-list li {
+            padding: 8px 15px; border-bottom: 1px solid #1a2332;
+            display: flex; justify-content: space-between; font-size: 0.85rem;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="screen-briefing" class="screen active">
+        <h1>LOGISTICS COMMAND // PATH EXTRACTION</h1>
+        <p><strong>CRITICAL RULE:</strong> You must click cells column-by-column, STRICTLY from LEFT to RIGHT. There is exactly ONE valid path reaching the final right-side column.</p>
+        <hr>
+        
+        <div style="display: flex; gap: 20px; margin-bottom: 20px;">
+            <div style="flex: 1; background: rgba(0,0,0,0.4); padding: 15px; border-left: 3px solid var(--text-muted);">
+                <p style="margin-bottom: 5px; font-weight: bold; font-size: 0.85rem;">[PROTOCOL A: TEXT RULES]</p>
+                <ul style="margin: 0; font-size: 0.75rem; padding-left: 15px; line-height: 1.5;">
+                    <li><strong>[MINE]</strong> = Do not click.</li>
+                    <li><strong>PRIORITY:</strong> At a fork, choose the highest priority text to avoid dead ends: <br>
+                    <strong>[SAFE]</strong> > <strong>[RISKY]</strong> > <strong>[DANGEROUS]</strong></li>
+                </ul>
+            </div>
+            
+            <div style="flex: 1; background: rgba(0,0,0,0.4); padding: 15px; border-left: 3px solid var(--color-blue);">
+                <p style="margin-bottom: 5px; font-weight: bold; font-size: 0.85rem;">[PROTOCOL B: VISUAL RULES]</p>
+                <ul style="margin: 0; font-size: 0.75rem; padding-left: 15px; line-height: 1.5;">
+                    <li><strong>SHAPE:</strong> Convex (Bumps) = MINES. Concave (Trenches) = PATHS.</li>
+                    <li><strong>COLOR:</strong> At a fork, choose the highest priority color: <br>
+                    <strong style="color: var(--color-blue);">BLUE</strong> > <strong style="color: var(--color-yellow);">YELLOW</strong> > <strong style="color: var(--color-red);">RED</strong></li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="btn-group">
+            <button onclick="initTest('A')">START PROTOCOL A: RAW TEXT</button>
+            <button onclick="initTest('B')">START PROTOCOL B: GLANCEABLE</button>
+        </div>
+    </div>
+
+    <div id="screen-tactical" class="screen">
+        <div class="hud-header">
+            <span id="hud-mode">PROTO: --</span>
+            <span id="hud-sector">SECTOR: 1/8</span>
+            <span id="hud-timer" style="color: var(--color-yellow);">TIME: 0.0s</span>
+        </div>
+
+        <div id="grid-wrapper">
+            <div class="scan-line"></div>
+            <div id="grid-container"></div>
+        </div>
+
+        <div id="system-message">AWAITING COL 1 COORDINATE...</div>
+    </div>
+
+    <div id="screen-debrief" class="screen">
+        <h1>SCAN COMPLETE // TELEMETRY REPORT</h1>
+        <hr>
+        <p>PROTOCOL UTILIZED: <strong id="res-mode" style="color: var(--color-blue);">--</strong></p>
+        <p>TOTAL SEQUENCE ERRORS: <strong id="res-errors" style="color: var(--threat-color);">--</strong></p>
+        
+        <ul id="report-list">
+            </ul>
+        
+        <div style="display: flex; justify-content: space-between; font-weight: bold; margin-top: 10px;">
+            <span>TOTAL TIME:</span>
+            <span id="res-total-time" style="color: var(--color-blue);">--</span>
+        </div>
+
+        <div class="btn-group">
+            <button onclick="location.reload()">REBOOT SYSTEM</button>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const TOTAL_SECTORS = 8;
+        const ROWS = 6;
+        const COLS = 6;
+        
+        // --- STATE ---
+        let currentMode = '';
+        let currentSector = 1;
+        let errorCount = 0;
+        
+        // Timer Variables
+        let sectorStartTime = 0;
+        let timerInterval;
+        let sectorTimes = [];
+        
+        // Path Data
+        let mainPath = []; // mainPath[col] = row
+        let branchPaths = []; // branchPaths[col] = array of rows
+        let cellColors = {}; // cellColors[`${row},${col}`] = color
+        let currentTargetCol = 0; 
+
+        // --- DOM ---
+        const screens = {
+            briefing: document.getElementById('screen-briefing'),
+            tactical: document.getElementById('screen-tactical'),
+            debrief: document.getElementById('screen-debrief')
+        };
+        const gridContainer = document.getElementById('grid-container');
+        const sysMessage = document.getElementById('system-message');
+        const timerDisplay = document.getElementById('hud-timer');
+        const sectorDisplay = document.getElementById('hud-sector');
+
+        function switchScreen(screenName) {
+            Object.values(screens).forEach(s => s.classList.remove('active'));
+            screens[screenName].classList.add('active');
+        }
+
+        function initTest(mode) {
+            currentMode = mode;
+            currentSector = 1;
+            errorCount = 0;
+            sectorTimes = [];
+            
+            gridContainer.className = mode === 'A' ? 'mode-a' : 'mode-b';
+            document.getElementById('hud-mode').innerText = `PROTO: ${mode}`;
+            
+            switchScreen('tactical');
+            loadNextSector();
+        }
+
+        // --- CORE ALGORITHM: 2x2 PREVENTION & PATH GENERATION ---
+        function generateStrictPath() {
+            let isValid = false;
+            
+            // Helper function to enforce 60% Blue, 30% Yellow, 10% Red distribution
+            function getWeightedColor() {
+                let rand = Math.random();
+                if (rand < 0.60) return 'blue';
+                if (rand < 0.90) return 'yellow';
+                return 'red';
+            }
+            
+            while (!isValid) {
+                mainPath = [];
+                branchPaths = Array.from({length: COLS}, () => []);
+                cellColors = {};
+
+                // Generate Main 1D Path
+                let r = Math.floor(Math.random() * ROWS);
+                mainPath.push(r);
+                for (let c = 1; c < COLS; c++) {
+                    let moves = [0];
+                    if (r > 0) moves.push(-1);
+                    if (r < ROWS - 1) moves.push(1);
+                    r += moves[Math.floor(Math.random() * moves.length)];
+                    mainPath.push(r);
+                }
+
+                // Initial Color 
+                cellColors[`${mainPath[0]},0`] = getWeightedColor();
+
+                // Generate Branches
+                for (let c = 0; c < COLS - 1; c++) {
+                    let currR = mainPath[c];
+                    let nextR = mainPath[c+1];
+                    
+                    let possibleBranches = [];
+                    if (currR > 0 && (currR - 1) !== nextR) possibleBranches.push(currR - 1);
+                    if (currR !== nextR) possibleBranches.push(currR);
+                    if (currR < ROWS - 1 && (currR + 1) !== nextR) possibleBranches.push(currR + 1);
+
+                    // NO branches allowed in the final column to ensure a single clear exit.
+                    let isFinalCol = (c + 1 === COLS - 1);
+                    
+                    // Branch probability set to exactly 40%
+                    let willBranch = !isFinalCol && possibleBranches.length > 0 && Math.random() < 0.40;
+
+                    if (willBranch) {
+                        let bR = possibleBranches[Math.floor(Math.random() * possibleBranches.length)];
+                        branchPaths[c+1].push(bR);
+
+                        // Enforce different levels at the fork, pulling from the 60/30/10 weight
+                        let c1 = getWeightedColor();
+                        let c2 = getWeightedColor();
+                        while (c1 === c2) {
+                            c2 = getWeightedColor(); // Ensure they are different
+                        }
+                        
+                        // Assign the higher priority to the main path
+                        let order = { 'blue': 3, 'yellow': 2, 'red': 1 };
+                        if (order[c1] > order[c2]) {
+                            cellColors[`${nextR},${c+1}`] = c1;
+                            cellColors[`${bR},${c+1}`] = c2;
+                        } else {
+                            cellColors[`${nextR},${c+1}`] = c2;
+                            cellColors[`${bR},${c+1}`] = c1;
+                        }
+                    } else {
+                        // No branch (60% chance), assign weighted color
+                        cellColors[`${nextR},${c+1}`] = getWeightedColor();
+                    }
+                }
+
+                // Validate: Check for any 2x2 stacked blocks
+                isValid = !has2x2Block();
+            }
+        }
+
+        function has2x2Block() {
+            const isSafe = (r, c) => mainPath[c] === r || branchPaths[c].includes(r);
+            for(let r=0; r < ROWS-1; r++){
+                for(let c=0; c < COLS-1; c++){
+                    if(isSafe(r,c) && isSafe(r+1,c) && isSafe(r,c+1) && isSafe(r+1,c+1)) {
+                        return true; 
+                    }
+                }
+            }
+            return false;
+        }
+
+        function updateTimer() {
+            let elapsed = (Date.now() - sectorStartTime) / 1000;
+            timerDisplay.innerText = `TIME: ${elapsed.toFixed(1)}s`;
+        }
+
+        function loadNextSector() {
+            if (currentSector > TOTAL_SECTORS) {
+                endTest();
+                return;
+            }
+            
+            currentTargetCol = 0;
+            sectorDisplay.innerText = `SECTOR: ${currentSector}/${TOTAL_SECTORS}`;
+            sysMessage.innerText = "AWAITING COL 1 COORDINATE...";
+            sysMessage.className = "";
+            gridContainer.innerHTML = '';
+
+            generateStrictPath();
+
+            // Render Grid
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.r = r;
+                    cell.dataset.c = c;
+                    
+                    if (mainPath[c] === r) {
+                        cell.classList.add('cell-safe');
+                        cell.classList.add('color-' + cellColors[`${r},${c}`]);
+                    } else if (branchPaths[c].includes(r)) {
+                        cell.classList.add('cell-branch');
+                        cell.classList.add('color-' + cellColors[`${r},${c}`]);
+                    } else {
+                        cell.classList.add('cell-threat');
+                    }
+                    
+                    cell.onclick = () => handleCellClick(r, c, cell);
+                    gridContainer.appendChild(cell);
+                }
+            }
+
+            // Start Timer
+            sectorStartTime = Date.now();
+            timerInterval = setInterval(updateTimer, 100);
+        }
+
+        function handleCellClick(r, c, cellElement) {
+            if (cellElement.classList.contains('secured')) return;
+
+            // Enforce sequential column clicking
+            if (c !== currentTargetCol) {
+                sysMessage.innerText = `>> SEQUENCE ERROR: MUST SELECT CELL IN COLUMN ${currentTargetCol + 1} <<`;
+                sysMessage.className = "msg-warn";
+                return;
+            }
+
+            if (mainPath[c] === r) {
+                // Correct Path
+                cellElement.classList.add('secured');
+                currentTargetCol++;
+                sysMessage.innerText = `[UPLINK SECURED: COL ${currentTargetCol}]`;
+                sysMessage.className = "msg-success";
+
+                if (currentTargetCol === COLS) {
+                    clearInterval(timerInterval);
+                    let timeTaken = (Date.now() - sectorStartTime) / 1000;
+                    sectorTimes.push(timeTaken);
+
+                    sysMessage.innerText = ">> CORRIDOR ESTABLISHED. ADVANCING... <<";
+                    gridContainer.style.pointerEvents = "none"; 
+                    setTimeout(() => {
+                        gridContainer.style.pointerEvents = "auto";
+                        currentSector++;
+                        loadNextSector();
+                    }, 800);
+                }
+            } else if (branchPaths[c].includes(r)) {
+                // Dead End
+                errorCount++;
+                triggerError(">> DEAD END DETECTED. SEQUENCE VIOLATION <<", cellElement);
+            } else {
+                // Mine
+                errorCount++;
+                triggerError(">> CRITICAL ERROR: MINE DETECTED <<", cellElement);
+            }
+        }
+
+        function triggerError(msg, cellElement) {
+            sysMessage.innerText = msg;
+            sysMessage.className = "msg-error";
+            cellElement.classList.add('flash-error');
+            setTimeout(() => {
+                cellElement.classList.remove('flash-error');
+                if (currentTargetCol < COLS) {
+                     sysMessage.innerText = `AWAITING COL ${currentTargetCol + 1} COORDINATE...`;
+                     sysMessage.className = "";
+                }
+            }, 800);
+        }
+
+        function endTest() {
+            clearInterval(timerInterval);
+            document.getElementById('res-mode').innerText = currentMode === 'A' ? 'RAW TEXT DATA' : 'GLANCEABLE SCAN';
+            document.getElementById('res-errors').innerText = errorCount;
+
+            // Generate Report Table
+            const reportList = document.getElementById('report-list');
+            reportList.innerHTML = '';
+            let totalTime = 0;
+
+            sectorTimes.forEach((time, index) => {
+                totalTime += time;
+                let li = document.createElement('li');
+                li.innerHTML = `<span>Sector ${index + 1}</span> <span>${time.toFixed(2)}s</span>`;
+                reportList.appendChild(li);
+            });
+
+            document.getElementById('res-total-time').innerText = `${totalTime.toFixed(2)}s`;
+            switchScreen('debrief');
+        }
+    </script>
+</body>
+</html>
